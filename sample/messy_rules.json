@@ -1,0 +1,9 @@
+[
+ {"id":"r1","instrument":"INFY","type":"level","direction":"below","level":1500},
+ {"id":"r2","instrument":"TCS","type":"level","direction":"above","level":3900},
+ {"id":"r3","instrument":"INFY","type":"ma_cross","short":3,"long":8,"direction":"above"},
+ {"id":"r10","instrument":"INFY","type":"ma_cross","short":3,"long":8,"direction":"below"},
+ {"id":"r4","instrument":"WIPRO","type":"level","direction":"below","level":400},
+ {"id":"r5","instrument":"TCS","type":"ma_cross","short":10,"long":5,"direction":"above"},
+ {"id":"r2","instrument":"TCS","type":"level","direction":"below","level":3850}
+]
