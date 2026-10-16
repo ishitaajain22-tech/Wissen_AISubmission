@@ -1,10 +1,10 @@
 # Price Alert Tool
 
-Reads daily closing prices and a list of alert rules, then prints which alerts fired and on which day.
+Reads daily closing prices and a list of alert rules, detects every individual alert event, and prints a compact summary grouped by instrument and alert type.
 
 **Run:** `python alerts.py prices.csv rules.json` (Python 3.8+, standard library only, nothing to install).
-**Test:** `python -m unittest -v` (103 tests, about 1 second).
-Alerts go to stdout, warnings to stderr, and the exit code is 2 on unreadable or invalid files. Nothing is hard-coded: prices and rules come only from the two files given on the command line (`sample/` and `cases/` are example data; a test runs one prices file against three different rules files and checks the output changes).
+**Test:** `python -m unittest -v` (92 tests in this project snapshot).
+The command-line output has one line per configured instrument/type category (four lines for the INFY/TCS sample rules); each line reports the total alert count and only the most recent alert date. The `run()` function still returns all individual alert events for testing or use by other Python code. Warnings go to stderr, and the exit code is 2 on unreadable or invalid files. Nothing is hard-coded: prices and rules come only from the two files given on the command line (`sample/` contains example data; a test runs one prices file against three different rules files and checks the output changes).
 
 ## How I used the assistant
 The assistant drafted code and tests; I set the requirements and acted as reviewer. I made it dry-run the logic on small hand-checkable numbers until I could predict outputs myself, had it list every edge case with what the tool does in each, and decided which behaviours to change. I also questioned its claims rather than accepting them: how the sample output was produced, and whether rules could be hard-coded. Every design choice below is one I reviewed and can explain.
@@ -20,7 +20,7 @@ The assistant drafted code and tests; I set the requirements and acted as review
 | `sample/expected.txt` was the tool's own output | Not independent evidence | Treated only as a regression snapshot; correctness rests on hand-worked tests and a randomized comparison with a naive reference |
 
 ## What the tool does
-Input 1, **prices.csv**: one row per instrument per day.
+Input 1, **prices.csv**: daily closing prices. Duplicate instrument/date rows are tolerated with a warning and the later valid row wins.
 ```
 date,instrument,close
 2026-09-01,INFY,1512.40
@@ -30,17 +30,14 @@ Input 2, **rules.json**: a list of rules. Each has a unique-ish `id`, an `instru
 {"id":"r1","instrument":"INFY","type":"level","direction":"below","level":1500}
 {"id":"r2","instrument":"TCS","type":"ma_cross","direction":"above","short":5,"long":20}
 ```
-Output: one line per alert, `date rule_id instrument description`, sorted by date, then rule id.
-```
-2026-09-03 r1 INFY level below 1500
-```
+Programmatic event output: `run()` returns one line per alert, `date rule_id instrument description`, sorted by date and rule id. The command-line interface summarizes these events by configured instrument/type, for example `INFY level: 4 alert(s) | latest alert: 2026-09-26`. A category with no events still appears with `0 alert(s) | latest alert: none`.
 
 ### How it works (five steps)
 1. **Read** (`load_prices`, `load_rules`): both files are read from the command line. Columns are matched by header name, so order and case do not matter.
 2. **Clean:** every row and rule is validated. A bad one is skipped with a warning; it never crashes the run, because one corrupt row should not hide every other alert.
 3. **Group:** prices are grouped per instrument (name matched ignoring case and spaces) and sorted by real date.
 4. **Detect** (`level_fires`, `ma_fires`): compare "yesterday" with "today" for each rule.
-5. **Print** (`run`, `main`): sort by date, then rule id in natural order, then position in the rules file. Warnings go to stderr so stdout stays clean for piping.
+5. **Print** (`run`, `main`): `run()` retains every event sorted by date, natural rule-id order, and rule-file position. `main()` groups those events into one summary line per configured instrument/type, showing the total event count and only the most recent alert date. Warnings go to stderr so stdout stays clean for piping.
 
 ### The two rules, precisely
 **Level.** An alert fires on day *t* when yesterday's close was on the other side of the level *or exactly on it*, and today's close is strictly past it. For `below 100`: `prev >= 100 and today < 100`. Touching the line is not a crossing; the day it actually goes through is.
@@ -75,7 +72,7 @@ Output: one line per alert, `date rule_id instrument description`, sorted by dat
 **Output and CLI:** ordering by date, natural id order, file position; stdout/stderr separation; a warning count on stderr; exit code 2 with a clean message for missing, empty or invalid files.
 
 ## Hand-made realistic cases (`cases/`)
-Each folder has `prices.csv`, `rules.json` and `expected.txt`. The expected output was worked out on paper before the tool was run, and each folder is also an automated test. Dates are real trading days (weekends skipped).
+Where hand-worked case folders are present, each contains `prices.csv`, `rules.json` and `expected.txt`; the expected output is checked by an automated test. Dates are real trading days (weekends skipped).
 
 | Case | Rule | What it shows | Hand working | Expected |
 |---|---|---|---|---|
@@ -95,7 +92,7 @@ Each folder has `prices.csv`, `rules.json` and `expected.txt`. The expected outp
 `sample/messy50.csv` + `sample/messy_rules.json` is a 50-row stress file with 8 deliberately broken rows, a conflicting duplicate, a lowercase name and a mixed bag of rules. It is kept separate from the clean `sample/prices.csv` demo so that a change in error handling is not confused with a change in normal behaviour.
 
 ## Verification
-- **103 automated tests** in these groups: level rule (14), moving-average rule (16), messy data (19), rule validation (20), command line (7), rule ordering (6), duplicate price rows (4), instrument case (3), duplicate rule ids (2), hand-made cases (12).
+- **92 automated tests** in the uploaded test suite, including rule logic, validation, CLI behavior, sorting, duplicate handling, and summary output with latest-alert dates.
 - **Independent references:** both rules are checked against slow, simple implementations on random data (exact fractions for the moving average), so those expected values are not my own judgement.
 - **Hand-worked cases:** the 12 folders above were predicted on paper first; the tool matched all twelve.
 - **Rules come from the file:** one prices file is run against three rules files with three different outputs, which catches hard-coding.

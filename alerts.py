@@ -24,7 +24,7 @@ _THOUSANDS = re.compile(r"^\d{1,3}(,\d{3})+(\.\d+)?$")
 
 def parse_date(s):
     s = s.strip()
-    if len(s) > 10 and s[10] in "T ":  # tolerate a time part: 2026-09-01T15:30
+    if len(s) > 10 and s[10] in "T ": 
         s = s[:10]
     try:
         return date.fromisoformat(s)
@@ -195,12 +195,14 @@ def _natural_key(s):
             for p in parts]
 
 
-def run(prices_path, rules_path):
+def _run_with_rules(prices_path, rules_path):
+    """Return all individual alert events plus the validated rules used to create them."""
     global _warned
     _warned = 0
     series = load_prices(prices_path)
+    rules = load_rules(rules_path)
     out = []
-    for idx, rule in enumerate(load_rules(rules_path)):
+    for idx, rule in enumerate(rules):
         points = series.get(rule["key"])
         if points is None:
             warn(f"rule {rule['id']}: no prices for {rule['instrument']}")
@@ -211,7 +213,44 @@ def run(prices_path, rules_path):
             # order: date, then rule id (natural), then id text, then file position
             out.append(((d, _natural_key(rule["id"]), rule["id"], idx), line))
     out.sort(key=lambda t: t[0])
-    return [line for _, line in out]
+    return [line for _, line in out], rules
+
+
+def run(prices_path, rules_path):
+    """Return every individual alert event; kept for tests and programmatic use."""
+    lines, _ = _run_with_rules(prices_path, rules_path)
+    return lines
+
+
+def summarize_alerts(lines, rules):
+    """Group individual events into one summary line per configured instrument/type."""
+    groups = {}
+    for rule in rules:
+        key = (rule["key"], rule["type"])
+        if key not in groups:
+            label_type = "MA" if rule["type"] == "ma_cross" else "level"
+            groups[key] = {"label": f"{rule['instrument']} {label_type}", "dates": []}
+
+    for line in lines:
+        parts = line.split(" ", 3)
+        if len(parts) != 4:
+            continue
+        event_date, _rule_id, instrument, description = parts
+        kind = "ma_cross" if description.startswith("ma_cross ") else "level"
+        key = (_canon(instrument), kind)
+        if key in groups:
+            groups[key]["dates"].append(event_date)
+
+    summary = []
+    for group in groups.values():
+        dates = group["dates"]
+        count = len(dates)
+        # Events are sorted chronologically, so the final date is the most recent.
+        latest_date = max(dates) if dates else "none"
+        summary.append(
+            f"{group['label']}: {count} alert(s) | latest alert: {latest_date}"
+        )
+    return summary
 
 
 def main(argv):
@@ -219,11 +258,12 @@ def main(argv):
         print("usage: python alerts.py prices.csv rules.json", file=sys.stderr)
         return 2
     try:
-        lines = run(argv[1], argv[2])
+        lines, rules = _run_with_rules(argv[1], argv[2])
     except (OSError, ValueError) as e:  # JSONDecodeError / UnicodeDecodeError are ValueErrors
         print(f"error: {e}", file=sys.stderr)
         return 2
-    for line in lines:
+    # Keep every event available through run(); the CLI presents a compact summary.
+    for line in summarize_alerts(lines, rules):
         print(line)
     if _warned:
         print(f"note: {_warned} warning(s) above - some input was skipped or ambiguous",

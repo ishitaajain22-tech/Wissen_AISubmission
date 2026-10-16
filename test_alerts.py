@@ -455,6 +455,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         with open(os.path.join(s, "expected.txt")) as f:
             self.assertEqual(r.stdout, f.read())
+        self.assertEqual(len(r.stdout.splitlines()), 4)
 
     def test_rules_come_from_the_file_not_the_code(self):
         with tempfile.TemporaryDirectory() as d:
@@ -462,9 +463,13 @@ class CliTests(unittest.TestCase):
             r1 = _write(d, "a.json", json.dumps([lvl("below", 100, "X", "a")]))
             r2 = _write(d, "b.json", json.dumps([lvl("below", 100, "X", "a"), lvl("above", 100, "X", "b")]))
             r3 = _write(d, "c.json", "[]")
-            self.assertEqual(self.cli(p, r1).stdout.count("\n"), 2)
-            self.assertEqual(self.cli(p, r2).stdout.count("\n"), 3)
-            self.assertEqual(self.cli(p, r3).stdout, "")
+            out1 = self.cli(p, r1).stdout
+            out2 = self.cli(p, r2).stdout
+            out3 = self.cli(p, r3).stdout
+            self.assertIn("2 alert(s)", out1)
+            self.assertIn("3 alert(s)", out2)
+            self.assertNotEqual(out1, out2)
+            self.assertEqual(out3, "")
 
     def test_missing_file_clean_error(self):
         r = self.cli("nope.csv", "nope.json")
@@ -495,9 +500,29 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = _write(d, "p.csv", HEADER + "2026-09-01,X,110\nbad,X,1\n2026-09-02,X,90\n")
             r = self.cli(p, _write(d, "r.json", json.dumps([lvl("below", 100)])))
-            self.assertEqual(r.stdout, "2026-09-02 r X level below 100\n")
+            self.assertEqual(r.stdout, "X level: 1 alert(s) | latest alert: 2026-09-02\n")
             self.assertIn("warning", r.stderr)
             self.assertIn("1 warning", r.stderr)
+
+    def test_sample_summary_has_four_categories_and_direction_is_configurable(self):
+        s = os.path.join(HERE, "sample")
+        with open(os.path.join(s, "rules.json"), encoding="utf-8") as f:
+            rules = json.load(f)
+        above = self.cli(os.path.join(s, "prices.csv"), os.path.join(s, "rules.json"))
+        self.assertEqual(len(above.stdout.splitlines()), 4)
+        self.assertTrue(above.stdout.splitlines()[2].startswith("TCS level:"))
+
+        # Flip only the TCS level direction. Summary shape remains four lines;
+        # the other three categories are unaffected.
+        with tempfile.TemporaryDirectory() as d:
+            rules[3]["direction"] = "below"
+            rp = _write(d, "rules.json", json.dumps(rules))
+            below = self.cli(os.path.join(s, "prices.csv"), rp)
+        self.assertEqual(len(below.stdout.splitlines()), 4)
+        above_lines, below_lines = above.stdout.splitlines(), below.stdout.splitlines()
+        self.assertEqual([above_lines[i] for i in (0, 1, 3)],
+                         [below_lines[i] for i in (0, 1, 3)])
+        self.assertNotEqual(above_lines[2], below_lines[2])
 
     def test_clean_run_has_silent_stderr(self):
         with tempfile.TemporaryDirectory() as d:
