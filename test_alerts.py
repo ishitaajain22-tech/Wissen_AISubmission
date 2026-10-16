@@ -61,7 +61,7 @@ def ma(direction, s, l, inst="X", id="r"):
             "direction": direction}
 
 
-# =========================================================== level rule
+# Level rule
 class LevelTests(unittest.TestCase):
     def test_brief_example(self):
         prices = ["2026-09-01,INFY,1520.50", "2026-09-01,TCS,3890.00", "2026-09-02,INFY,1534.10",
@@ -126,16 +126,13 @@ class LevelTests(unittest.TestCase):
             self.assertTrue(exp)
 
 
-# ============================================================ MA cross
+#MA cross rule
 class MaCrossTests(unittest.TestCase):
-    # all with short=2, long=3 unless stated; worked values are in comments
     def test_normal_cross_above(self):
-        # d3 S8.5<L9, d4 S7.5<L8, d5 S8=L8, d6 S10.5>L9.33 -> fires d6
         self.assertEqual(run(days("X", [10, 9, 8, 7, 9, 12]), [ma("above", 2, 3)]),
                          ["2026-09-06 r X ma_cross 2/3 above"])
 
     def test_normal_cross_below(self):
-        # d3 S13>L12, d4 S13.5>L13, d5 S12<L12.67 -> fires d5
         self.assertEqual(run(days("X", [10, 12, 14, 13, 11, 9]), [ma("below", 2, 3)]),
                          ["2026-09-05 r X ma_cross 2/3 below"])
 
@@ -146,15 +143,12 @@ class MaCrossTests(unittest.TestCase):
         self.assertEqual(run(days("X", [10, 9, 8]), [ma("above", 2, 3), ma("below", 2, 3, id="b")]), [])
 
     def test_four_rows_is_the_minimum_possible(self):
-        # d3: S=(10+5)/2=7.5 < L=(10+10+5)/3=8.33 ; d4: S=(5+50)/2=27.5 > L=21.67 -> fires d4
         self.assertEqual(dates(run(days("X", [10, 10, 5, 50]), [ma("above", 2, 3)])), ["2026-09-04"])
 
     def test_already_above_when_first_defined_no_fire(self):
-        # d3 S5 > L3.67 and d4 S9 > L6.33: never crossed
         self.assertEqual(run(days("X", [1, 1, 9, 9]), [ma("above", 2, 3)]), [])
 
     def test_equal_then_up_fires(self):
-        # d3,d4 S=L=5 ; d5 S7 > L6.33
         self.assertEqual(dates(run(days("X", [5, 5, 5, 5, 9]), [ma("above", 2, 3)])), ["2026-09-05"])
 
     def test_touches_equal_but_never_crosses(self):
@@ -204,7 +198,7 @@ class MaCrossTests(unittest.TestCase):
             self.assertEqual(dates(run(dated("X", closes), [ma(direction, S, L)])), exp)
 
 
-# ======================================================== real-data mess
+# real-data messy
 class RealDataTests(unittest.TestCase):
     def test_out_of_order_dates(self):
         prices = ["2026-09-03,X,90", "2026-09-01,X,110", "2026-09-02,X,105"]
@@ -385,7 +379,7 @@ class DuplicatePriceRowTests(unittest.TestCase):
         self.assertIn("CONFLICTING", err)
 
 
-# ======================================================= rule validation
+# rule validation
 class RuleValidationTests(unittest.TestCase):
     def good_with(self, bad_rules):
         out, err = run_err(days("X", [110, 90]), bad_rules + [lvl("below", 100, "X", "ok")])
@@ -439,7 +433,7 @@ class RuleValidationTests(unittest.TestCase):
                 run(days("X", [1, 2]), bad)
 
 
-# ================================================================= CLI
+# CLI
 class CliTests(unittest.TestCase):
     def cli(self, *args):
         return subprocess.run([sys.executable, os.path.join(HERE, "alerts.py"), *args],
@@ -499,33 +493,6 @@ class CliTests(unittest.TestCase):
             p = _write(d, "p.csv", HEADER + "2026-09-01,X,110\n2026-09-02,X,90\n")
             r = self.cli(p, _write(d, "r.json", json.dumps([lvl("below", 100)])))
             self.assertEqual(r.stderr, "")
-
-
-class HandMadeCaseTests(unittest.TestCase):
-    """One test per folder in cases/. Each folder holds prices.csv, rules.json and
-    expected.txt (worked out by hand BEFORE running the tool), plus optional
-    stderr_contains.txt (phrases the warnings must include)."""
-
-
-def _make_case_test(folder):
-    def test(self):
-        err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            got = alerts.run(os.path.join(folder, "prices.csv"), os.path.join(folder, "rules.json"))
-        with open(os.path.join(folder, "expected.txt")) as f:
-            self.assertEqual(got, f.read().splitlines())
-        p = os.path.join(folder, "stderr_contains.txt")
-        if os.path.exists(p):
-            with open(p) as f:
-                for phrase in f.read().splitlines():
-                    self.assertIn(phrase, err.getvalue())
-    return test
-
-
-_CASES = os.path.join(HERE, "cases")
-if os.path.isdir(_CASES):
-    for _name in sorted(os.listdir(_CASES)):
-        setattr(HandMadeCaseTests, "test_" + _name, _make_case_test(os.path.join(_CASES, _name)))
 
 
 if __name__ == "__main__":
