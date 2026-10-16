@@ -1,4 +1,3 @@
-
 import csv
 import json
 import re
@@ -24,7 +23,7 @@ _THOUSANDS = re.compile(r"^\d{1,3}(,\d{3})+(\.\d+)?$")
 
 def parse_date(s):
     s = s.strip()
-    if len(s) > 10 and s[10] in "T ": 
+    if len(s) > 10 and s[10] in "T ":
         s = s[:10]
     try:
         return date.fromisoformat(s)
@@ -34,7 +33,7 @@ def parse_date(s):
 
 def parse_price(s):
     s = s.strip()
-    if _THOUSANDS.match(s):  # "1,520.50"
+    if _THOUSANDS.match(s):
         s = s.replace(",", "")
     try:
         v = Decimal(s)
@@ -47,7 +46,7 @@ def parse_price(s):
 
 def load_prices(path):
     series = {}
-    with open(path, newline="", encoding="utf-8-sig") as f:  # utf-8-sig strips BOM
+    with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError("prices file is empty")
@@ -161,11 +160,10 @@ def load_rules(path):
 
 
 def _fmt(d):
-    return format(d.normalize(), "f")  # 1500.0 -> "1500", 12.50 -> "12.5"
+    return format(d.normalize(), "f")
 
 
 def level_fires(rule, points):
-    
     lvl, below = rule["level"], rule["direction"] == "below"
     for (_, prev), (d, cur) in zip(points, points[1:]):
         if (below and prev >= lvl and cur < lvl) or (not below and prev <= lvl and cur > lvl):
@@ -180,7 +178,7 @@ def ma_fires(rule, points):
     for _, c in points:
         pre.append(pre[-1] + c)
     diffs = [(pre[i + 1] - pre[i + 1 - S]) * L - (pre[i + 1] - pre[i + 1 - L]) * S
-             for i in range(L - 1, len(points))]  # diffs[k] <-> row L-1+k
+             for i in range(L - 1, len(points))]
     above = rule["direction"] == "above"
     for k in range(1, len(diffs)):
         p, c = diffs[k - 1], diffs[k]
@@ -189,14 +187,12 @@ def ma_fires(rule, points):
 
 
 def _natural_key(s):
-    """r2 sorts before r10; letters compare case-insensitively."""
     parts = [p for p in re.split(r"([0-9]+)", s) if p != ""]
     return [(0, int(p), "") if (p.isascii() and p.isdigit()) else (1, 0, p.casefold())
             for p in parts]
 
 
 def _run_with_rules(prices_path, rules_path):
-    """Return all individual alert events plus the validated rules used to create them."""
     global _warned
     _warned = 0
     series = load_prices(prices_path)
@@ -210,20 +206,17 @@ def _run_with_rules(prices_path, rules_path):
         fn = level_fires if rule["type"] == "level" else ma_fires
         for d, text in fn(rule, points):
             line = f"{d.isoformat()} {rule['id']} {rule['instrument']} {text}"
-            # order: date, then rule id (natural), then id text, then file position
             out.append(((d, _natural_key(rule["id"]), rule["id"], idx), line))
     out.sort(key=lambda t: t[0])
     return [line for _, line in out], rules
 
 
 def run(prices_path, rules_path):
-    """Return every individual alert event; kept for tests and programmatic use."""
     lines, _ = _run_with_rules(prices_path, rules_path)
     return lines
 
 
 def summarize_alerts(lines, rules):
-    """Group individual events into one summary line per configured instrument/type."""
     groups = {}
     for rule in rules:
         key = (rule["key"], rule["type"])
@@ -245,7 +238,6 @@ def summarize_alerts(lines, rules):
     for group in groups.values():
         dates = group["dates"]
         count = len(dates)
-        # Events are sorted chronologically, so the final date is the most recent.
         latest_date = max(dates) if dates else "none"
         summary.append(
             f"{group['label']}: {count} alert(s) | latest alert: {latest_date}"
@@ -259,10 +251,9 @@ def main(argv):
         return 2
     try:
         lines, rules = _run_with_rules(argv[1], argv[2])
-    except (OSError, ValueError) as e:  # JSONDecodeError / UnicodeDecodeError are ValueErrors
+    except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    # Keep every event available through run(); the CLI presents a compact summary.
     for line in summarize_alerts(lines, rules):
         print(line)
     if _warned:

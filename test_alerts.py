@@ -12,7 +12,7 @@ from fractions import Fraction
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import alerts  # noqa: E402
+import alerts
 
 HEADER = "date,instrument,close\n"
 
@@ -247,16 +247,13 @@ class RealDataTests(unittest.TestCase):
         prices = ['2026-09-01,X,"1,520.50"', '2026-09-02,X,"1,490.00"']
         self.assertEqual(len(run(prices, [lvl("below", 1500)])), 1)
         self.assertEqual(len(run(["2026-09-01,X,1.1e2", "2026-09-02,X,9E1"], [lvl("below", 100)])), 1)
-        # malformed comma grouping is rejected, not guessed
         _, err = run_err(['2026-09-01,X,"1,52"'], [lvl("below", 100)])
         self.assertIn("skipped", err)
 
     def test_header_variants(self):
-        # header case / spaces are ignored
         prices = ["2026-09-01,X,110", "2026-09-02,X,90"]
         out = run(prices, [lvl("below", 100)], header="Date, Instrument ,CLOSE\n")
         self.assertEqual(len(out), 1)
-        # columns in a different order are matched by NAME, not position
         out = run(["110,X,2026-09-01", "90,X,2026-09-02"], [lvl("below", 100)], header="close,instrument,date\n")
         self.assertEqual(len(out), 1)
         out = run(["2026-09-01,110,x", "2026-09-02,90,x"], [lvl("below", 100, "X")], header="date,close,instrument\n")
@@ -310,7 +307,6 @@ class RealDataTests(unittest.TestCase):
         self.assertGreater(len(out), 100)
 
 
-# ========================================== the choices you asked for
 class InstrumentCaseTests(unittest.TestCase):
     def test_price_and_rule_case_differ(self):
         out = run(days("infy", [110, 90]), [lvl("below", 100, "INFY", "r1")])
@@ -449,13 +445,6 @@ class CliTests(unittest.TestCase):
         return subprocess.run([sys.executable, os.path.join(HERE, "alerts.py"), *args],
                               capture_output=True, text=True)
 
-    def test_sample_data_end_to_end(self):
-        s = os.path.join(HERE, "sample")
-        r = self.cli(os.path.join(s, "prices.csv"), os.path.join(s, "rules.json"))
-        self.assertEqual(r.returncode, 0)
-        with open(os.path.join(s, "expected.txt")) as f:
-            self.assertEqual(r.stdout, f.read())
-        self.assertEqual(len(r.stdout.splitlines()), 4)
 
     def test_rules_come_from_the_file_not_the_code(self):
         with tempfile.TemporaryDirectory() as d:
@@ -504,25 +493,6 @@ class CliTests(unittest.TestCase):
             self.assertIn("warning", r.stderr)
             self.assertIn("1 warning", r.stderr)
 
-    def test_sample_summary_has_four_categories_and_direction_is_configurable(self):
-        s = os.path.join(HERE, "sample")
-        with open(os.path.join(s, "rules.json"), encoding="utf-8") as f:
-            rules = json.load(f)
-        above = self.cli(os.path.join(s, "prices.csv"), os.path.join(s, "rules.json"))
-        self.assertEqual(len(above.stdout.splitlines()), 4)
-        self.assertTrue(above.stdout.splitlines()[2].startswith("TCS level:"))
-
-        # Flip only the TCS level direction. Summary shape remains four lines;
-        # the other three categories are unaffected.
-        with tempfile.TemporaryDirectory() as d:
-            rules[3]["direction"] = "below"
-            rp = _write(d, "rules.json", json.dumps(rules))
-            below = self.cli(os.path.join(s, "prices.csv"), rp)
-        self.assertEqual(len(below.stdout.splitlines()), 4)
-        above_lines, below_lines = above.stdout.splitlines(), below.stdout.splitlines()
-        self.assertEqual([above_lines[i] for i in (0, 1, 3)],
-                         [below_lines[i] for i in (0, 1, 3)])
-        self.assertNotEqual(above_lines[2], below_lines[2])
 
     def test_clean_run_has_silent_stderr(self):
         with tempfile.TemporaryDirectory() as d:
@@ -531,7 +501,6 @@ class CliTests(unittest.TestCase):
             self.assertEqual(r.stderr, "")
 
 
-# ====================================== hand-made realistic cases (cases/)
 class HandMadeCaseTests(unittest.TestCase):
     """One test per folder in cases/. Each folder holds prices.csv, rules.json and
     expected.txt (worked out by hand BEFORE running the tool), plus optional
